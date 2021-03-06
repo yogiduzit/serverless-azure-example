@@ -4,10 +4,12 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using DataLayer.Data;
+using DataLayer.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
@@ -36,24 +38,33 @@ namespace Snoopy.Function
             return new OkObjectResult(studentsArray);
         }
 
-        [FunctionName("HttpWebAPI")]
-        public static async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req,
-            ILogger log)
+        [FunctionName("GetStudentById")]
+        public async Task<IActionResult> GetStudentById([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "students/{id}")] HttpRequest req, 
+        string id, ILogger log)
         {
-            log.LogInformation("C# HTTP trigger function processed a request.");
+            log.LogInformation("C# HTTP GET/posts trigger function processed a request.");
 
-            string name = req.Query["name"];
+            Student student = await _context.Students.FirstOrDefaultAsync(i => i.StudentId == id);
+            if (student == null) {
+                return new NotFoundObjectResult(new { id });
+            }
 
+            return new OkObjectResult(student);
+        }
+
+        [FunctionName("CreateStudent")]
+        public async Task<IActionResult> CreateStudent([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "students")] HttpRequest req, 
+        ILogger log)
+        {
+            log.LogInformation("C# HTTP GET/posts trigger function processed a request.");
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            dynamic data = JsonConvert.DeserializeObject(requestBody);
-            name = name ?? data?.name;
+            Student student = JsonConvert.DeserializeObject<Student>(requestBody);
+            student.StudentId = Guid.NewGuid().ToString();
 
-            string responseMessage = string.IsNullOrEmpty(name)
-                ? "This HTTP triggered function executed successfully. Pass a name in the query string or in the request body for a personalized response."
-                : $"Hello, {name}. This HTTP triggered function executed successfully.";
+            _context.Students.Add(student);
+            await _context.SaveChangesAsync();
 
-            return new OkObjectResult(responseMessage);
+            return new CreatedResult(new Uri($"/students/{student.StudentId}", UriKind.Relative), student);
         }
     }
 }
